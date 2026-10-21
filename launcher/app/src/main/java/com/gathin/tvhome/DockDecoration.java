@@ -18,6 +18,9 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
 
+    private boolean wallpaperTranslucent;
+    private boolean cinematic;
+
     DockDecoration(int dockSize, float density) {
         this(dockSize, density, false);
     }
@@ -28,8 +31,25 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         setTranslucent(hasWallpaper);
     }
 
+    /** Local photo wallpapers: a light glass band so the picture shows through. */
     void setTranslucent(boolean translucent) {
-        if (translucent) {
+        wallpaperTranslucent = translucent;
+        applyBand();
+    }
+
+    /** Upstream cinematic shelf: a darker translucent band over the artwork. Takes priority. */
+    void setCinematic(boolean cinematic) {
+        this.cinematic = cinematic;
+        applyBand();
+    }
+
+    private void applyBand() {
+        if (cinematic) {
+            band.setColor(0x8C121014);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(density);
+            edge.setColor(0x26FFFFFF);
+        } else if (wallpaperTranslucent) {
             band.setColor(0x44000000);
             edge.setStyle(Paint.Style.STROKE);
             edge.setStrokeWidth(density);
@@ -59,7 +79,8 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             View child = parent.getChildAt(i);
             int pos = parent.getChildAdapterPosition(child);
             if (pos < 0 || pos >= dockSize) continue;
-            View card = child.findViewById(R.id.card);
+            RecyclerView.ViewHolder vh = parent.getChildViewHolder(child);
+            View card = vh instanceof AppAdapter.Holder ? ((AppAdapter.Holder) vh).card : child.findViewById(R.id.card);
             if (card == null) continue;
             float l = child.getLeft() + card.getLeft();
             float t = child.getTop() + card.getTop() + child.getTranslationY();

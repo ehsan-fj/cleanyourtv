@@ -8,10 +8,20 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
+import java.util.Collections;
+import java.util.Map;
 
 /**
- * Maps the remote's Input button to the system input switcher, from any app.
- * Also acts as a persistent service ensuring audio routes to external sound bar on wake.
+ * Maps the remote's Input button to the system input switcher, from any app. Remotes such as the Chromecast voice
+ * remote send KEYCODE_TV for it, others (KTC and Kalley Realtek Google TV remotes) KEYCODE_TV_INPUT; on Google TV
+ * the stock launcher handles both, so with the stock launcher disabled the button does nothing. Buttons listed in
+ * input_key_keycodes (config.xml or a theme) open the input switcher the same way, and app_keys start an app (a
+ * YouTube button that only the stock launcher answered). Every other key passes through untouched.
+ *
+ * <p>Also keeps the Sony Bravia Sync audio route on the external sound bar: it re-applies the audio mode whenever
+ * the screen comes on while this service is running.
+ *
+ * <p>Opt-in: INPUT_KEY_SERVICE=1 build-and-install.sh (or -InputKeyService on Windows) enables it.
  */
 public class InputKeyService extends AccessibilityService {
 
@@ -27,11 +37,18 @@ public class InputKeyService extends AccessibilityService {
         }
     };
 
+    private int[] inputKeycodes = new int[0];
+    private Map<Integer, String> appKeys = Collections.emptyMap();
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         registerReceiver(mScreenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
         AudioSystemEnforcer.ensureAudioSystem(this, 3500L);
+        // From config.xml or a theme's config.json; theme.sh rebinds this service after a push.
+        Config config = Config.load(this);
+        inputKeycodes = config.inputKeycodes;
+        appKeys = RemoteKeys.parseAppKeys(config.appKeys);
     }
 
     @Override
@@ -39,16 +56,28 @@ public class InputKeyService extends AccessibilityService {
         super.onDestroy();
         try {
             unregisterReceiver(mScreenReceiver);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean isInputKey(int keyCode) {
+        if (keyCode == KeyEvent.KEYCODE_TV || keyCode == KeyEvent.KEYCODE_TV_INPUT) return true;
+        for (int code : inputKeycodes) if (keyCode == code) return true;
+        return false;
     }
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        if (event.getKeyCode() != KeyEvent.KEYCODE_TV) return false;
-        if (event.getAction() == KeyEvent.ACTION_UP) {
-            try {
-                startActivity(new Intent(ACTION_VIEW_INPUTS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (ActivityNotFoundException ignored) {
+        String app = appKeys.get(event.getKeyCode());
+        if (app == null && !isInputKey(event.getKeyCode())) return false;
+        if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+            if (app != null) {
+                RemoteKeys.launch(this, app);
+            } else {
+                try {
+                    startActivity(new Intent(ACTION_VIEW_INPUTS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (ActivityNotFoundException ignored) {
+                }
             }
         }
         return true;
