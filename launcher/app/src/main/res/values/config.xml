@@ -9,20 +9,20 @@
 
     <!-- Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped. -->
     <string-array name="dock_apps">
-        <item>com.netflix.ninja</item>
-        <item>com.amazon.amazonvideo.livingroom</item>
         <item>com.google.android.youtube.tv</item>
-        <item>in.startv.hotstar</item>
+        <item>org.jellyfin.androidtv</item>
+        <item>com.vewd.core.integration.dia</item>
+        <item>nz.co.tvnz.ondemand.tv</item>
     </string-array>
 
     <!-- Apps never shown as tiles (e.g. the Live TV app, which the Inputs menu already covers). -->
     <string-array name="hidden_apps">
-        <item>com.mediatek.wwtv.tvcenter</item>
-        <item>com.mitv.gallery</item>
+        <item>com.sony.dtv.tvx</item>
+        <item>com.sony.dtv.tvxlauncher.programguide</item>
     </string-array>
 
     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
-    <string name="live_tv_package" translatable="false">com.mediatek.wwtv.tvcenter</string>
+    <string name="live_tv_package" translatable="false">com.sony.dtv.tvx</string>
 
     <!-- Some TVs give their Live TV app no leanback entry point at all, so `live_tv_package` above
          resolves to nothing (TCL Android TV 9 on China-market sets is one). This action is then sent
@@ -74,4 +74,17 @@
          tiles that zoom without overshoot, shorter fades and no tile entrance when Home comes back. Set it
          here or with "reduced_motion": true in a theme's config.json; false keeps the normal motion. -->
     <bool name="reduced_motion">false</bool>
+
+    <!-- Idle delay in seconds before the dock auto-hides when a wallpaper/photo is active (default: 60s = 1 min).
+         Set to 0 to disable auto-hide. Can also be overridden in config.json via "dock_hide_seconds" or "dock_hide_minutes". -->
+    <integer name="dock_hide_seconds">60</integer>
+
+    <!-- Ultra-low-power weather pill in top bar (e.g. "☀️ 20°C"). Caches for 45 min, 0 continuous CPU. -->
+    <bool name="show_weather">true</bool>
+
+    <!-- City name for weather (e.g. "Wellington, New Zealand"). Leave empty for automatic IP geolocation. -->
+    <string name="weather_city" translatable="false">Wellington, New Zealand</string>
+
+    <!-- Wallpaper shuffle interval in seconds when left idle (default: 15s). -->
+    <integer name="wallpaper_shuffle_seconds">15</integer>
 </resources>

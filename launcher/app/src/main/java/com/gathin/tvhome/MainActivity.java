@@ -85,6 +85,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private AppAdapter adapter;
     private RecyclerView grid;
     private FrameLayout root;
+    private WallpaperShuffleManager wallpaperManager;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
@@ -122,6 +123,109 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean promptsPaused;
     /** The Inputs or Module cards dropdown while one is open, so onPause can close it. */
     private PopupWindow openPopup;
+    private View topButtons;
+    private DockDecoration dockDecoration;
+    private long dockHideDelayMs = 60_000L; // default 1 minute (configurable)
+    private boolean isDockHidden = false;
+    private boolean wakeKeyConsumed = false;
+    private TextView photoCaption;
+    private WeatherManager weatherManager;
+    private final Runnable hideDockRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isFinishing() || isDestroyed() || isDockHidden || dockHideDelayMs <= 0) return;
+            if (openPopup != null && openPopup.isShowing()) {
+                handler.postDelayed(this, dockHideDelayMs);
+                return;
+            }
+            if (cardPrompt != null && cardPrompt.isShowing()) {
+                handler.postDelayed(this, dockHideDelayMs);
+                return;
+            }
+            if (wallpaperManager != null && wallpaperManager.hasWallpapers()) {
+                hideDock();
+            }
+        }
+    };
+
+    private void resetDockIdleTimer() {
+        handler.removeCallbacks(hideDockRunnable);
+        if (dockHideDelayMs > 0 && wallpaperManager != null && wallpaperManager.hasWallpapers()) {
+            handler.postDelayed(hideDockRunnable, dockHideDelayMs);
+        }
+    }
+
+    private void hideDock() {
+        if (isDockHidden) return;
+        isDockHidden = true;
+        if (grid != null) {
+            grid.animate().alpha(0f).setDuration(400).start();
+        }
+        if (glass != null) {
+            glass.animate().alpha(0f).setDuration(400).start();
+        }
+        if (heroName != null) {
+            heroName.animate().alpha(0f).setDuration(400).start();
+        }
+        if (photoCaption != null && wallpaperManager != null) {
+            String caption = wallpaperManager.getCurrentCaption();
+            if (caption != null && !caption.isEmpty()) {
+                photoCaption.setText(caption);
+                photoCaption.animate().alpha(1f).setDuration(400).start();
+            }
+        }
+    }
+
+    private void showDock() {
+        boolean wasHidden = isDockHidden;
+        isDockHidden = false;
+        if (photoCaption != null) {
+            photoCaption.animate().alpha(0f).setDuration(250).start();
+        }
+        if (grid != null) {
+            if (wasHidden) {
+                grid.animate().alpha(1f).setDuration(250).start();
+            } else {
+                grid.setAlpha(1f);
+            }
+        }
+        if (glass != null && glassShown) {
+            if (wasHidden) {
+                glass.animate().alpha(1f).setDuration(250).start();
+            } else {
+                glass.setAlpha(1f);
+            }
+        }
+        if (heroName != null && heroShown) {
+            if (wasHidden) {
+                heroName.animate().alpha(1f).setDuration(250).start();
+            } else {
+                heroName.setAlpha(1f);
+            }
+        }
+        resetDockIdleTimer();
+    }
+
+    private void updatePhotoCaption(String caption) {
+        if (photoCaption == null) return;
+        if (isDockHidden) {
+            if (caption != null && !caption.isEmpty()) {
+                if (photoCaption.getAlpha() > 0f) {
+                    photoCaption.animate().alpha(0f).setDuration(250).withEndAction(() -> {
+                        photoCaption.setText(caption);
+                        photoCaption.animate().alpha(1f).setDuration(350).start();
+                    }).start();
+                } else {
+                    photoCaption.setText(caption);
+                    photoCaption.animate().alpha(1f).setDuration(350).start();
+                }
+            } else {
+                photoCaption.animate().alpha(0f).setDuration(250).start();
+            }
+        } else {
+            photoCaption.setText(caption != null ? caption : "");
+        }
+    }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     /** Refreshes the network pill when the connection changes: at boot Wi-Fi often connects after Home is shown. */
@@ -170,6 +274,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             reloadApps(false);
         }
     };
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
+                AudioSystemEnforcer.ensureAudioSystem(context, 3500L);
+                AudioSystemEnforcer.ensureAudioSystem(context, 7000L);
+                showDock();
+                resetDockIdleTimer();
+            }
+        }
+    };
     private final Runnable minuteTick = new Runnable() {
         @Override
         public void run() {
@@ -195,12 +310,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         sourcePanelAction = cfg.sourcePanelAction;
 
         root = findViewById(R.id.root);
-        root.setBackgroundColor(cfg.backgroundColor);
-        if (cfg.wallpaper != null) showWallpaper(cfg.wallpaper);
+        wallpaperManager = new WallpaperShuffleManager(this, root, cfg.wallpaper, cfg.backgroundColor, cfg.wallpaperShuffleSeconds);
+        dockHideDelayMs = cfg.dockHideSeconds > 0 ? (cfg.dockHideSeconds * 1000L) : 0L;
         glass = findViewById(R.id.glass);
         ambient = findViewById(R.id.ambient);
+        if (wallpaperManager.hasWallpapers()) {
+            ambient.setVisibility(View.GONE);
+        }
         heroName = findViewById(R.id.heroName);
         greeting = findViewById(R.id.greeting);
+        topButtons = findViewById(R.id.topButtons);
         btnWifi = findViewById(R.id.btnWifi);
         shamsiDate = findViewById(R.id.shamsiDate);
         shamsi = cfg.shamsiDate;
@@ -218,7 +337,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         grid.setLayoutManager(new GridLayoutManager(this, COLUMNS));
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
-        grid.addItemDecoration(new DockDecoration(COLUMNS, density));
+        dockDecoration = new DockDecoration(COLUMNS, density, wallpaperManager.hasWallpapers());
+        grid.addItemDecoration(dockDecoration);
         int enterAnim = reducedMotion ? R.anim.tile_enter_reduced : R.anim.tile_enter;
         float enterDelay = reducedMotion ? 0f : 0.06f;
         grid.setLayoutAnimation(new LayoutAnimationController(
@@ -236,7 +356,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
             int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
             int gridRows = itemH * rowsBelowDock;
-            int want = Math.max(0, h - dockRow - gridRows - (int) (30 * density));
+            int peekOffset = (wallpaperManager != null && wallpaperManager.hasWallpapers()) ? (int) (6 * density) : (int) (30 * density);
+            int want = Math.max(0, h - dockRow - gridRows - peekOffset);
             if (grid.getPaddingTop() != want) {
                 grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
             }
@@ -277,6 +398,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
 
+        photoCaption = findViewById(R.id.photoCaption);
+        if (wallpaperManager != null) {
+            wallpaperManager.setOnWallpaperChangeListener(this::updatePhotoCaption);
+        }
+
+        TextView btnWeather = findViewById(R.id.btnWeather);
+        weatherManager = new WeatherManager(this, btnWeather, cfg.showWeather, cfg.weatherCity);
+
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
         btnInputs.setOnClickListener(v -> showInputs());
@@ -303,12 +432,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 return true;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                // The left end is Inputs, or Wi-Fi on a box without inputs.
-                return v.getId() == R.id.btnInputs
-                        || (v.getId() == R.id.btnWifi && btnInputs.getVisibility() != View.VISIBLE);
+                // The left end is Weather (if shown), or Inputs, or Wi-Fi on a box without inputs.
+                return v.getId() == R.id.btnWeather
+                        || (v.getId() == R.id.btnInputs && btnWeather.getVisibility() != View.VISIBLE)
+                        || (v.getId() == R.id.btnWifi && btnInputs.getVisibility() != View.VISIBLE && btnWeather.getVisibility() != View.VISIBLE);
             }
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == R.id.btnSettings;
         };
+        btnWeather.setOnKeyListener(pillKeys);
         btnInputs.setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
@@ -334,32 +465,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                     .build(), vpnCallback);
         }
-    }
 
-    /**
-     * A theme's full-screen picture behind everything. Decoded once, downsampled to the screen so a 4K
-     * JPEG costs a 1080p bitmap at most (about 8 MB), which is the price of a wallpaper on a 1 GB TV.
-     */
-    private void showWallpaper(File file) {
-        try {
-            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
-            opts.inJustDecodeBounds = true;
-            android.graphics.BitmapFactory.decodeFile(file.getPath(), opts);
-            int sample = 1;
-            while (opts.outWidth / (sample * 2) >= dm.widthPixels && opts.outHeight / (sample * 2) >= dm.heightPixels) sample *= 2;
-            opts.inJustDecodeBounds = false;
-            opts.inSampleSize = sample;
-            opts.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565;   // no alpha needed, half the memory
-            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(file.getPath(), opts);
-            if (bmp == null) return;
-            android.widget.ImageView wall = new android.widget.ImageView(this);
-            wall.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
-            wall.setImageBitmap(bmp);
-            root.addView(wall, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        } catch (Exception | OutOfMemoryError e) {
-            // A bad or huge picture must never take the home screen down; the plain colour stays.
-        }
+        registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
     }
 
     /**
@@ -371,6 +478,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        showDock();
+        resetDockIdleTimer();
         grid.scrollToPosition(0);
         lastFocused = 0;
         lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
@@ -379,6 +488,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        if (wallpaperManager != null) {
+            wallpaperManager.onResume();
+        }
+        if (weatherManager != null) {
+            weatherManager.onResume();
+        }
+        if (dockDecoration != null && wallpaperManager != null) {
+            dockDecoration.setTranslucent(wallpaperManager.hasWallpapers());
+        }
+        showDock();
+        resetDockIdleTimer();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(packageReceiver, packageFilter, Context.RECEIVER_NOT_EXPORTED);
         } else {
@@ -390,6 +510,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateGreeting();
         updateWifiLabel();
         updateInputsButton();
+        AudioSystemEnforcer.ensureAudioSystem(this, 3500L);
         handler.postDelayed(minuteTick, MINUTE_MS);
     }
 
@@ -458,6 +579,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         super.onPause();
+        handler.removeCallbacks(hideDockRunnable);
+        showDock();
+        if (wallpaperManager != null) {
+            wallpaperManager.onPause();
+        }
         unregisterReceiver(packageReceiver);
         handler.removeCallbacks(minuteTick);
         // Nothing of ours stays on screen over another app; an undecided prompt simply returns next time.
@@ -474,6 +600,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacks(hideDockRunnable);
+        if (wallpaperManager != null) {
+            wallpaperManager.onDestroy();
+        }
+        if (weatherManager != null) {
+            weatherManager.onDestroy();
+        }
+        try {
+            unregisterReceiver(screenReceiver);
+        } catch (Exception ignored) {}
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.unregisterCallback(inputCallback);
@@ -488,10 +624,45 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Home screen: Back goes nowhere.
     }
 
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        boolean isVolumeKey = (code == KeyEvent.KEYCODE_VOLUME_UP
+                || code == KeyEvent.KEYCODE_VOLUME_DOWN
+                || code == KeyEvent.KEYCODE_VOLUME_MUTE);
+
+        if (!isVolumeKey) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                resetDockIdleTimer();
+                if (wallpaperManager != null) {
+                    wallpaperManager.onUserInteraction();
+                }
+                if (isDockHidden) {
+                    wakeKeyConsumed = true;
+                    showDock();
+                    return true;
+                }
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                if (wakeKeyConsumed) {
+                    wakeKeyConsumed = false;
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        resetDockIdleTimer();
+    }
+
     // ---- glass highlight -------------------------------------------------------------------------
 
     @Override
     public void onTileFocused(int position, View card) {
+        resetDockIdleTimer();
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
         // Tile rect in root coordinates, using layout positions (ignores the scale animation).
@@ -552,6 +723,26 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float y = dockTopInRoot - 14 * density - 26 * density - heroName.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
 
+        if (wallpaperManager != null && wallpaperManager.hasWallpapers()) {
+            ambient.setVisibility(View.GONE);
+            ambient.setAlpha(0f);
+            heroName.setText(label);
+            heroName.setY(y);
+            heroName.setTranslationX(0f);
+            if (!heroShown) {
+                heroName.animate().alpha(1f).setDuration(reducedMotion ? 100 : 260).start();
+                heroShown = true;
+            } else if (changed) {
+                heroName.animate().alpha(0f).translationX(-12 * density).setDuration(120).withEndAction(() -> {
+                    heroName.setText(label);
+                    heroName.setY(y);
+                    heroName.setTranslationX(12 * density);
+                    heroName.animate().alpha(1f).translationX(0f).setDuration(200).start();
+                }).start();
+            }
+            return;
+        }
+
         if (reducedMotion) {
             // Snap the shelf instead of sliding and fading it: each of those frames repaints the
             // full-screen panel, and this switch exists for the GPUs that cannot afford it.
@@ -602,6 +793,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * over the screen is one texture; changing apps only uploads it once.
      */
     private void setAmbient(int color) {
+        if (wallpaperManager != null && wallpaperManager.hasWallpapers()) {
+            ambient.setVisibility(View.GONE);
+            return;
+        }
+        ambient.setVisibility(View.VISIBLE);
         if (color == ambientColor && ambient.getBackground() != null) return;
         ambientColor = color;
         int c = color & 0x00FFFFFF;

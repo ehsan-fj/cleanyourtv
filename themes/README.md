@@ -37,10 +37,15 @@ is ignored, and a file that doesn't parse is ignored as a whole, so a theme can 
 | `show_home_settings_shortcut` | bool | The "Default home" tile, where the TV has a home picker |
 | `background_color` | `#RRGGBB` | Colour behind everything; black by default |
 | `wallpaper` | bool | Show `wallpaper.jpg` from the theme folder (`true`), or ignore it (`false`) |
+| `dock_hide_seconds` | integer (0 to 86400) | Idle delay in seconds before dock auto-hides with wallpaper active (default: 60; 0 to disable) |
+| `dock_hide_minutes` | integer (0 to 1440) | Convenience alias for `dock_hide_seconds` in minutes (e.g. `1` or `2`) |
+| `show_weather` | bool | Ultra-low-power weather pill in top bar (default: `true`) |
+| `weather_city` | string | Optional city name for weather (e.g. `"Wellington, New Zealand"`). If omitted/empty, auto-detects by IP |
+| `wallpaper_shuffle_seconds` | integer (1 to 86400) | Idle interval in seconds between photo changes (default: 15) |
 
 ## Wallpapers
 
-`wallpaper.jpg` is drawn full screen behind the launcher, centre-cropped. Keep it dark, 1920×1080 and
+`wallpaper.jpg` is drawn full screen behind the launcher, scaled to fit the display. Keep it dark, 1920×1080 (or 3840×2160) and
 under about 300 KB: the text, the hero name and the dock band are designed for black, and a 1 GB TV
 decodes the picture into memory on every Home start. Pictures larger than the screen are downsampled.
 

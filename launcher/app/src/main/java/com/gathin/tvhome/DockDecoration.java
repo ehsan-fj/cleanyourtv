@@ -19,12 +19,27 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     private final RectF rect = new RectF();
 
     DockDecoration(int dockSize, float density) {
+        this(dockSize, density, false);
+    }
+
+    DockDecoration(int dockSize, float density, boolean hasWallpaper) {
         this.dockSize = dockSize;
         this.density = density;
-        band.setColor(0xFF141416);
-        edge.setStyle(Paint.Style.STROKE);
-        edge.setStrokeWidth(density);
-        edge.setColor(0x1FFFFFFF);
+        setTranslucent(hasWallpaper);
+    }
+
+    void setTranslucent(boolean translucent) {
+        if (translucent) {
+            band.setColor(0x44000000);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(density);
+            edge.setColor(0x33FFFFFF);
+        } else {
+            band.setColor(0xFF141416);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(density);
+            edge.setColor(0x1FFFFFFF);
+        }
     }
 
     @Override

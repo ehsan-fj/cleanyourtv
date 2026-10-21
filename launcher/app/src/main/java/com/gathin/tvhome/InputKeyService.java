@@ -2,19 +2,45 @@ package com.gathin.tvhome;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
- * Maps the remote's Input button to the system input switcher, from any app. Remotes such as the Chromecast voice
- * remote send KEYCODE_TV for it; on Google TV the stock launcher handles that key, so with the stock launcher
- * disabled the button does nothing. Only KEYCODE_TV is consumed; every other key passes through untouched.
- * Opt-in: INPUT_KEY_SERVICE=1 build-and-install.sh (or -InputKeyService on Windows) enables it.
+ * Maps the remote's Input button to the system input switcher, from any app.
+ * Also acts as a persistent service ensuring audio routes to external sound bar on wake.
  */
 public class InputKeyService extends AccessibilityService {
 
     private static final String ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS";
+
+    private final BroadcastReceiver mScreenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
+                AudioSystemEnforcer.ensureAudioSystem(context, 3500L);
+                AudioSystemEnforcer.ensureAudioSystem(context, 7000L);
+            }
+        }
+    };
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        registerReceiver(mScreenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        AudioSystemEnforcer.ensureAudioSystem(this, 3500L);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        try {
+            unregisterReceiver(mScreenReceiver);
+        } catch (Exception ignored) {}
+    }
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {

@@ -40,7 +40,9 @@ def get_signer():
     return PythonRSASigner(pub, priv)
 
 
-def connect(timeout=120):
+def connect(timeout=None):
+    if timeout is None:
+        timeout = float(os.environ.get("TV_TIMEOUT", "300"))
     dev = AdbDeviceTcp(HOST, PORT, default_transport_timeout_s=float(timeout))
     dev.connect(rsa_keys=[get_signer()], transport_timeout_s=float(timeout), auth_timeout_s=timeout)
     return dev

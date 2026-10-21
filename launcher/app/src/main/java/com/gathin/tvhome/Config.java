@@ -50,6 +50,14 @@ final class Config {
     final int backgroundColor;
     /** Full-screen picture behind the launcher, or null for the plain colour. */
     final File wallpaper;
+    /** Idle seconds before dock auto-hides when a wallpaper is active (default 60s = 1 min). */
+    final int dockHideSeconds;
+    /** Seconds between wallpaper changes when left idle (default 15). */
+    final int wallpaperShuffleSeconds;
+    /** Whether to show the low-power weather pill in the top bar. */
+    final boolean showWeather;
+    /** Optional city override for weather, or empty for auto-detect by IP. */
+    final String weatherCity;
     /** Whether the overlay file was present and parsed. */
     final boolean overlayApplied;
 
@@ -58,7 +66,8 @@ final class Config {
                    int columns, int rowsBelowDock,
                    boolean shamsiDate, boolean moduleCards, boolean reducedMotion, String vpnApp,
                    boolean showHomeSettingsShortcut, int backgroundColor,
-                   File wallpaper, boolean overlayApplied) {
+                   File wallpaper, int dockHideSeconds, int wallpaperShuffleSeconds,
+                   boolean showWeather, String weatherCity, boolean overlayApplied) {
         this.dockApps = Collections.unmodifiableList(dockApps);
         this.hiddenApps = Collections.unmodifiableList(hiddenApps);
         this.liveTvPackage = liveTvPackage;
@@ -75,6 +84,10 @@ final class Config {
         this.showHomeSettingsShortcut = showHomeSettingsShortcut;
         this.backgroundColor = backgroundColor;
         this.wallpaper = wallpaper;
+        this.dockHideSeconds = dockHideSeconds;
+        this.wallpaperShuffleSeconds = wallpaperShuffleSeconds;
+        this.showWeather = showWeather;
+        this.weatherCity = weatherCity;
         this.overlayApplied = overlayApplied;
     }
 
@@ -100,6 +113,10 @@ final class Config {
         String vpn = res.getString(R.string.vpn_app).trim();
         boolean homeSettings = res.getBoolean(R.bool.show_home_settings_shortcut);
         int background = 0xFF000000;
+        int dockHide = res.getInteger(R.integer.dock_hide_seconds);
+        int shuffleSeconds = res.getInteger(R.integer.wallpaper_shuffle_seconds);
+        boolean showWeather = res.getBoolean(R.bool.show_weather);
+        String weatherCity = res.getString(R.string.weather_city).trim();
         boolean applied = false;
 
         File dir = dir(ctx);
@@ -122,6 +139,16 @@ final class Config {
             vpn = string(json, "vpn_app", vpn);
             homeSettings = bool(json, "show_home_settings_shortcut", homeSettings);
             background = color(json, "background_color", background);
+            dockHide = integer(json, "dock_hide_seconds", dockHide, 0, 86400);
+            if (json.has("dock_hide_minutes")) {
+                int minutes = integer(json, "dock_hide_minutes", -1, 0, 1440);
+                if (minutes >= 0) {
+                    dockHide = minutes * 60;
+                }
+            }
+            shuffleSeconds = integer(json, "wallpaper_shuffle_seconds", shuffleSeconds, 1, 86400);
+            showWeather = bool(json, "show_weather", showWeather);
+            weatherCity = string(json, "weather_city", weatherCity);
         }
         File wallpaper = dir != null ? new File(dir, WALLPAPER_NAME) : null;
         if (wallpaper != null && !(wallpaper.isFile() && wallpaper.length() > 0)) wallpaper = null;
@@ -130,7 +157,8 @@ final class Config {
 
         return new Config(dock, hidden, liveTv, liveTvAction, panelService, panelAction, inputAction,
                 Math.max(1, columns), Math.max(0, rowsBelow), shamsi, moduleCards, reducedMotion,
-                vpn, homeSettings, background, wallpaper, applied);
+                vpn, homeSettings, background, wallpaper, Math.max(0, dockHide),
+                Math.max(1, shuffleSeconds), showWeather, weatherCity, applied);
     }
 
     /** Reads and parses the overlay; any problem means "no overlay", never a crash on the home screen. */

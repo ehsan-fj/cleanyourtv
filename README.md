@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> **Sony KD-49X8000D Device Guide & Restoration:**
+> The complete maintenance guide, restore commands, LG sound bar auto-sync details, and dock/wallpaper customization instructions for your TV are in **[README_DEVICE.md](README_DEVICE.md)** (and `backup/README.md`).
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads." width="800"></a>
 </p>
@@ -67,8 +71,9 @@ screenshots pulled from the TV. With this repo as context it takes about fifteen
 - **A top shelf** naming the focused app in large type, with an ambient glow in a colour taken from its artwork.
 - **The rest of your apps in a grid** that slides up when you press Down.
 - **One floating glass highlight** that springs from tile to tile. The focused tile lifts and shows its name.
-- **Three frosted buttons**: Inputs (HDMI ports, AV, Live TV), Wi-Fi or Ethernet with the network name, Settings.
-- **A greeting, a thin clock and the date** in [Outfit](https://fonts.google.com/specimen/Outfit), and a matching Clock screensaver.
+- **Frosted top bar pills**: Live weather (`☀️ 15°C`) with zero-polling cache, Inputs (HDMI ports, AV, Live TV), Wi-Fi or Ethernet with network name, Settings.
+- **A greeting, a thin clock and the date** in [Outfit](https://fonts.google.com/specimen/Outfit), enlarged for living room legibility, and a matching Clock screensaver.
+- **Dynamic Photo Shuffle & Picture Frame**: Smooth 15-second idle photo shuffle, translucent glass dock, and 1-minute idle auto-hide displaying EXIF date/time captions with zero background CPU overhead.
 - **Themes** that change colours, wallpaper, dock and columns without a rebuild, and **module cards** that let other apps plug a tile in, only with your say-so.
 
 And a TV that stops working against you: no sponsored rows, no "Discover" nags, no analytics
@@ -209,7 +214,8 @@ network, no background services. It needs JDK 17 and Android SDK platform 34 to 
 `brew install openjdk@17 android-commandlinetools` and `sdkmanager "platforms;android-34" "build-tools;34.0.0"`. On Linux
 the install script finds `~/Android/Sdk` and the `java` on your PATH.
 
-- **Configure** in [`config.xml`](launcher/app/src/main/res/values/config.xml): dock order, hidden apps, the Live TV package, columns (tiles shrink from 5 up), rows under the dock, an optional VPN app for the network pill, and `reduced_motion` for TVs whose GPU cannot keep up.
+- **Configure** in [`config.xml`](launcher/app/src/main/res/values/config.xml): dock order, hidden apps, the Live TV package, columns (tiles shrink from 5 up), rows under the dock, an optional VPN app for the network pill, weather toggle & city (`show_weather`, `weather_city`), wallpaper idle shuffle interval (`wallpaper_shuffle_seconds`), idle dock auto-hide delay (`dock_hide_seconds`), and `reduced_motion` for TVs whose GPU cannot keep up.
+- **Audio Output Enforcement**: Automated IPC switching to external sound bars (`BraviaSyncService` / ARC) on TV wake, cold boot, and Home resume.
 - **Themes** set the same keys plus a background colour and a wallpaper from a `config.json` pushed to the TV, no rebuild. Three ship in [`themes/`](themes/), documented there.
 - **Language** follows the TV: English, German, Spanish, Catalan, French, Russian, Serbian (Latin), Polish, Arabic, Simplified Chinese, Thai, Turkish. Android 13+ can set it for the launcher alone: `tools/tv.py 'cmd locale set-app-locales com.gathin.tvhome --locales ca'`.
   Russian includes the module-card approval and management screens and the VPN-off badge.
