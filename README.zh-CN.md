@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · 简体中文
+  <a href="README.md">English</a> · 简体中文 · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 
 ## 快速开始
 
-准备一台与电视连接同一局域网的电脑，以及可以运行终端命令的编程助手，例如 Claude Code、Codex 或 Gemini CLI。
+准备一台与电视连接同一局域网的电脑，以及可以运行终端命令的编程助手，例如 [Claude Code](https://claude.com/product/claude-code)、[Codex](https://github.com/openai/codex) 或 [Gemini CLI](https://github.com/google-gemini/gemini-cli)。
 
 | 步骤 | 操作 |
 |---|---|
@@ -59,7 +59,11 @@
 
 ### 在电视上调整设置
 
-短按桌面的「设置」按钮进入电视系统设置；**在该按钮上长按遥控器确定键**，选择「简洁桌面设置」，可以调整：
+默认短按「设置」打开电视系统设置，长按后可进入「简洁桌面设置」。在配置或主题中启用 `launcher_settings_button` 后，顶部改为独立的「简洁桌面设置」按钮，短按即可进入；长按仍可打开模块卡片和应用排序工具，电视系统设置也可从设置页面或下方应用图标进入。
+
+启用独立按钮后，页面还提供「调整应用顺序」，点击即可返回桌面进入移动模式。
+
+可调整：
 
 | 选项 | 作用 |
 |---|---|
@@ -77,6 +81,8 @@
 
 应用库默认关闭，在配置或主题中启用 `app_library` 后，入口显示在首页应用的最后一行之后。它可以列出具有电视或普通 Android 启动入口的应用；普通 Android 应用可能仍需触摸或鼠标操作。
 
+另可启用默认关闭的 `app_library_selection`：按确定直接切换右上角勾选，选择是否在首页显示。已勾选和未勾选分别按显示名称排序，勾选组排在前面；取消后焦点选相邻的下一个，末尾则选前一个，不跟随隐藏的应用移到后组。
+
 - 对尚未添加到首页的应用按确定，可添加快捷方式。
 - 对已经在首页的应用按确定，可打开应用；长按可打开操作菜单，添加或移除首页快捷方式，也可查看应用信息。
 - 从首页移除不会卸载应用。相关选择在重启、应用更新及推送或重置主题后保留。
@@ -87,7 +93,7 @@
 
 清理清单面向 **Android TV / Google TV**；当前桌面 APK 要求 **Android 8.0（API 26）或更高版本**。社区提供了多种电视与电视盒子的配置；其中一些设备运行的 Android 版本低于桌面的最低要求，清理清单不代表桌面可安装。请在[机型清单](examples/README.md)中核对型号、地区和固件，阅读对应目录的说明，再使用停用列表。
 
-- Samsung Tizen 和 LG webOS 不能直接运行本项目的 Android 桌面；社区移植项目可参考[社区作品](SHOWCASE.md)。
+- Samsung Tizen 和 LG webOS 不能直接运行本项目的 Android 桌面；[docs/devices/samsung-tizen.md](docs/devices/samsung-tizen.md) 记录了一台 2021 年 Tizen 机型在局域网里暴露的接口（没有 ADB，因而无法停用应用），社区移植项目可参考[社区作品](SHOWCASE.md)。
 - Fire TV 的清理记录可供手动适配；[操作提示词](PROMPT.md)不适用于 Fire TV，Fire OS 也限制替换默认桌面。
 - 部分中国大陆版电视会拒绝侧载 APK 或安装第三方 HOME 桌面，已记录的 TCL 机型只是其中的例子。不能仅凭品牌判断兼容性。
 - 没有现成清单时，可以让助手检查实际设备，并按[贡献指南](CONTRIBUTING.md)提交经过验证的机型记录。

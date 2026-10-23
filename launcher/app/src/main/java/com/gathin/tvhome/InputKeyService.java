@@ -21,13 +21,13 @@ import java.util.Map;
  * <p>Also keeps the Sony Bravia Sync audio route on the external sound bar: it re-applies the audio mode whenever
  * the screen comes on while this service is running.
  *
- * <p>Opt-in: INPUT_KEY_SERVICE=1 build-and-install.sh (or -InputKeyService on Windows) enables it.
+ * Opt-in: INPUT_KEY_SERVICE=1 build-and-install.sh (or -InputKeyService on Windows) enables it.
  */
 public class InputKeyService extends AccessibilityService {
 
     private static final String ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS";
 
-    private final BroadcastReceiver mScreenReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent != null && Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
@@ -40,30 +40,36 @@ public class InputKeyService extends AccessibilityService {
     private int[] inputKeycodes = new int[0];
     private Map<Integer, String> appKeys = Collections.emptyMap();
     private boolean bluetoothAudioAcquired;
+    private Map<Integer, String> appScancodes = Collections.emptyMap();
+    private Map<Integer, String> holdAppKeys = Collections.emptyMap();
+    private Map<Integer, String> holdAppScancodes = Collections.emptyMap();
+    /** restore_key_services was on when the config was read: this helper is noted for ServiceRepair. */
+    private boolean repairRecord;
+    /** Stops key filtering while a game controller is connected; null unless gamepad_passthrough and key_filter. */
+    private GamepadPassthrough gamepads;
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
-        registerReceiver(mScreenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        registerReceiver(screenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
         AudioSystemEnforcer.ensureAudioSystem(this, 3500L);
         BluetoothAudioControl.acquire(this);
         bluetoothAudioAcquired = true;
         // From config.xml or a theme's config.json; theme.sh rebinds this service after a push.
         Config config = Config.load(this);
+        // restore_key_services: note that this helper runs, so Home can put it back after a force stop.
+        repairRecord = config.restoreKeyServices;
+        if (repairRecord) ServiceRepair.connected(this, getClass());
         inputKeycodes = config.inputKeycodes;
         appKeys = RemoteKeys.parseAppKeys(config.appKeys);
-    }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        try {
-            unregisterReceiver(mScreenReceiver);
-        } catch (Exception ignored) {
-        }
-        if (bluetoothAudioAcquired) {
-            BluetoothAudioControl.release();
-            bluetoothAudioAcquired = false;
+        appScancodes = RemoteKeys.parseAppScancodes(config.appKeys);
+        RemoteKeys.applyKeyFilter(this, config.keyFilter);
+        holdAppKeys = RemoteKeys.parseHoldAppKeys(config.appKeys);
+        holdAppScancodes = RemoteKeys.parseHoldAppScancodes(config.appKeys);
+        // gamepad_passthrough, off by default. Only with key_filter on: off, the service never filters keys.
+        if (config.gamepadPassthrough && config.keyFilter && gamepads == null) {
+            gamepads = new GamepadPassthrough(this);
+            gamepads.start();
         }
     }
 
@@ -75,19 +81,40 @@ public class InputKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        String app = appKeys.get(event.getKeyCode());
-        if (app == null && !isInputKey(event.getKeyCode())) return false;
+        // A scancode entry is more specific than any keycode, so it goes first.
+        if (RemoteKeys.handle(this, event, appScancodes.get(event.getScanCode()),
+                holdAppScancodes.get(event.getScanCode()))) return true;
+        if (RemoteKeys.handle(this, event, appKeys.get(event.getKeyCode()),
+                holdAppKeys.get(event.getKeyCode()))) return true;
+        if (!isInputKey(event.getKeyCode())) return false;
         if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
-            if (app != null) {
-                RemoteKeys.launch(this, app);
-            } else {
-                try {
-                    startActivity(new Intent(ACTION_VIEW_INPUTS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                } catch (ActivityNotFoundException ignored) {
-                }
+            try {
+                startActivity(new Intent(ACTION_VIEW_INPUTS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (ActivityNotFoundException ignored) {
             }
         }
         return true;
+    }
+
+    /** Unbound by Android: the user turned the helper off, so Home doesn't put it back (ServiceRepair). */
+    @Override
+    public boolean onUnbind(Intent intent) {
+        if (repairRecord) ServiceRepair.disconnected(this, getClass());
+        return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        if (gamepads != null) gamepads.stop();
+        try {
+            unregisterReceiver(screenReceiver);
+        } catch (Exception ignored) {
+        }
+        if (bluetoothAudioAcquired) {
+            BluetoothAudioControl.release();
+            bluetoothAudioAcquired = false;
+        }
+        super.onDestroy();
     }
 
     @Override

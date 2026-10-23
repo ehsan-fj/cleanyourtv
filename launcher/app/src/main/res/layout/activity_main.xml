@@ -65,7 +65,7 @@
                 android:singleLine="true"
                 android:textColor="#B3FFFFFF"
                 android:textSize="12sp"
-                android:fontFamily="@font/outfit_medium"
+                android:fontFamily="@string/font_medium"
                 android:letterSpacing="0.22"
                 android:textAllCaps="true" />
         </LinearLayout>
@@ -78,7 +78,7 @@
             android:singleLine="true"
             android:textColor="#FFFFFFFF"
             android:textSize="34sp"
-            android:fontFamily="@font/outfit_light"
+            android:fontFamily="@string/font_light"
             android:letterSpacing="-0.01"
             android:includeFontPadding="false" />
 
@@ -90,7 +90,7 @@
             android:singleLine="true"
             android:textColor="#99FFFFFF"
             android:textSize="12sp"
-            android:fontFamily="@font/outfit_medium"
+            android:fontFamily="@string/font_medium"
             android:letterSpacing="0.12" />
     </LinearLayout>
 
@@ -118,7 +118,7 @@
             android:layout_height="wrap_content"
             android:textColor="#FFFFFFFF"
             android:textSize="48sp"
-            android:fontFamily="@font/outfit_light"
+            android:fontFamily="@string/font_light"
             android:letterSpacing="-0.02"
             android:includeFontPadding="false"
             android:singleLine="true" />
@@ -133,7 +133,7 @@
             android:singleLine="true"
             android:textColor="#B3FFFFFF"
             android:textSize="15sp"
-            android:fontFamily="@font/outfit_light"
+            android:fontFamily="@string/font_light"
             android:visibility="gone" />
 
         <LinearLayout
@@ -204,7 +204,7 @@
                         android:format24Hour="HH:mm"
                         android:textColor="#FFFFFFFF"
                         android:textSize="52sp"
-                        android:fontFamily="@font/outfit_light"
+                        android:fontFamily="@string/font_light"
                         android:letterSpacing="-0.04"
                         android:includeFontPadding="false" />
 
@@ -219,7 +219,7 @@
                         android:format24Hour=""
                         android:textColor="#B3FFFFFF"
                         android:textSize="15sp"
-                        android:fontFamily="@font/outfit_medium"
+                        android:fontFamily="@string/font_medium"
                         android:letterSpacing="0.08"
                         android:textAllCaps="true" />
 
@@ -282,10 +282,9 @@
                  row; gone, it takes no space. -->
             <TextView
                 android:id="@+id/stats"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_below="@id/leftBlock"
                 android:layout_alignStart="@id/leftBlock"
-                android:layout_alignEnd="@id/leftBlock"
                 android:gravity="left"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
@@ -293,7 +292,7 @@
                 android:ellipsize="end"
                 android:textColor="#D9FFFFFF"
                 android:textSize="14sp"
-                android:fontFamily="@font/outfit_medium"
+                android:fontFamily="@string/font_medium"
                 android:letterSpacing="0.04"
                 android:focusable="false"
                 android:visibility="gone" />
@@ -340,6 +339,14 @@
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
+                    android:id="@+id/btnLibraryTop"
+                    style="@style/TopButtonIcon"
+                    android:visibility="gone"
+                    android:contentDescription="@string/app_library"
+                    android:drawableStart="@drawable/ic_apps"
+                    android:nextFocusDown="@+id/grid" />
+
+                <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopButton"
                     android:text="@string/settings"
@@ -361,6 +368,8 @@
                 android:layout_height="match_parent"
                 android:paddingTop="10dp"
                 android:paddingBottom="40dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:clipToPadding="false"
                 android:clipChildren="false"
                 android:overScrollMode="never"
@@ -377,7 +386,7 @@
         android:alpha="0"
         android:importantForAccessibility="no" />
 
-    <!-- Subtle photo caption (EXIF date) shown in digital photo frame mode -->
+    <!-- Subtle photo caption (EXIF date) shown while the dock is hidden in photo-frame mode. -->
     <TextView
         android:id="@+id/photoCaption"
         android:layout_width="wrap_content"

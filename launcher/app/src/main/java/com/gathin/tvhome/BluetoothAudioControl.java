@@ -1,5 +1,6 @@
 package com.gathin.tvhome;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
@@ -157,6 +158,9 @@ public final class BluetoothAudioControl {
         return Build.VERSION.SDK_INT < 31;
     }
 
+    // Only called while canUseBluetooth() is true (Android 11 and older, where the BLUETOOTH permission
+    // granted at install covers these reads); lint judges the call by targetSdk alone.
+    @SuppressLint("MissingPermission")
     private static boolean isAudioDevice(BluetoothDevice device) {
         if (device.getBondState() != BluetoothDevice.BOND_BONDED) return false;
         BluetoothClass bluetoothClass = device.getBluetoothClass();

@@ -1,140 +1,192 @@
-# CleanYourTV — agent notes
+# AGENTS.md
 
-Read this before changing anything. It is a map of the repo, not a replacement for the docs.
+Instructions for coding agents (Claude Code, Codex, Gemini CLI, Cursor, Copilot and others) working in
+this repository. People should start with [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md);
+this file repeats their rules in the form an agent needs, and links to them for the detail.
 
-## What this project is
+## First: which job are you doing?
 
-Two halves that work together:
-
-1. **Debloat** Android TV / Google TV over ADB: back up, then `pm disable-user` the vendor's
-   telemetry, ad and content packages. Nothing is uninstalled, so `tools/restore.sh` can undo it.
-2. **Replace Home** with a small native launcher (`launcher/`) in an Apple TV 4K style: dock,
-   app grid, glass highlight, ambient glow, pills, screensaver.
-
-## Git setup
-
-This checkout is the personal fork **`ehsan-fj/cleanyourtv`**:
-
-- `origin` = `https://github.com/ehsan-fj/cleanyourtv.git` (the fork)
-- `upstream` = `https://github.com/Gathin23/cleanyourtv.git`
-- Working branch: **`sony-kd49x8000d`**, based on upstream commit `6bcd649` (launcher 2.3)
-- `main` in this clone tracks the fork and is far ahead (launcher 2.4+). Merging it into this branch
-  will conflict with the local changes; do that only when asked.
-
-**All device-specific work is uncommitted on purpose.** Do not commit, stash, amend or push unless the
-user explicitly asks. Treat the dirty working tree as the user's work in progress and never revert or
-reformat it.
-
-## Current local device
-
-- **Sony KD-49X8000D** (`BRAVIA 4K GB`, Android TV 9 / API 28), IP `192.168.1.40`.
-- Device guide, restore commands, audio-sync and wallpaper details: **`README_DEVICE.md`**.
-- TV was **not reachable** on the network during the last setup check. If `TV_HOST` is unset or the
-  TV is off, ask for the IP / wait for the TV; do not guess.
-- Local WIP features: Sony Bravia Sync audio switching (`AudioSystemEnforcer`, `AudioSyncReceiver`),
-  wallpaper shuffle + idle dock auto-hide (`WallpaperShuffleManager`, `DockDecoration`), weather pill
-  (`WeatherManager`), larger typography, theme overlay additions.
-
-## Layout
-
-| Path | What lives there |
+| You were asked to | Do this |
 |---|---|
-| `launcher/` | Android app, plain Java, package `com.gathin.tvhome` |
-| `launcher/app/src/main/res/values/config.xml` | Per-TV configuration defaults |
-| `launcher/app/src/main/java/com/gathin/tvhome/` | `MainActivity` (lifecycle, D-pad, layout), `Config` (config.xml + JSON overlay), adapters/decorations, managers |
-| `tools/` | Pure-Python ADB client (`tv.py`), base64 push (`b64push.py`), disable/restore/themes/wallpapers, PowerShell twins |
-| `themes/` | Runtime `config.json` overlays + optional `wallpaper.jpg`; keys documented in `themes/README.md` |
-| `examples/` | Per-model debloat lists; add a row to `examples/README.md` |
-| `tests/` | Python tests for examples, debloat paths, wallpaper scaling |
-| `docs/` | Specs (`specs/card.md`), module cards, troubleshooting, images |
-| `backup/` | **Gitignored** local dumps, screenshots and `restore_backup.sh` for this TV |
-| `family_photo/` | Untracked local photo collection used by `tools/push_wallpapers.sh` |
+| Clean up a TV: debloat it, install the launcher, push a theme | Read [PROMPT.md](PROMPT.md) and follow it exactly, on the real TV. Use the tools in `tools/` and the launcher in `launcher/` rather than writing new ones; the only file you need to change is `launcher/app/src/main/res/values/config.xml`, or a theme's `config.json`, for this TV. Do not edit the repo's docs, tests or other code, and do not open issues or pull requests unless the person asks you to. |
+| Change this repo: a TV list, a fix, a translation, a theme, docs | Skip the next section and read on from [Repo map](#repo-map). |
 
-## Commands
+### Cleaning a TV: the rules that are not negotiable
 
-Python tooling (the venv already exists at `tools/venv`):
+[PROMPT.md](PROMPT.md) is the procedure. Its safety rules, in brief:
 
-```bash
-# one-time, if the venv is missing
-python3 -m venv tools/venv && tools/venv/bin/pip install -r tools/requirements.txt
+- **Disable, never uninstall.** `pm disable-user --user 0`, one package per shell call. No
+  `pm uninstall`, no root, nothing flashed. Every step must be undone by `tools/restore.sh`.
+- **Back up first.** Package list, disabled list, `getprop` and settings into `backup/` before the first
+  change. `tools/disable.sh` also writes its own record in `~/.cleanyourtv/`; keep the list you applied.
+- **Leave alone what the TV needs to work:** the TV app and input services behind HDMI and the tuner,
+  the input/source menu, remote and Bluetooth pairing, the on-screen keyboard, Play Store and Play
+  Services. When a package name says nothing, read `dumpsys package <name>`, then ask.
+- **Never disable Android's core packages:** the permission controller, package installer, ext
+  services/shared and module metadata (`com.android.*` and `com.google.android.*`),
+  `com.google.android.overlay.modules*`, `com.android.providers.*` (calendar, contacts, user dictionary
+  and blocked numbers aside), `com.android.systemui`, `com.android.shell`, `com.android.phone`,
+  `com.android.settings`, `com.android.tv.settings`, `android`. Without them Android may not boot (#884);
+  `tools/disable.sh`, `disable.ps1` and `check.py --fix` refuse such a list, with no override.
+- **Never start a factory or test package** (`com.cvte.tv.hkcfac`, `mediatek.factorymenu.ui` and the like),
+  not even to look. On some boards that flips a factory-mode flag the shell cannot undo.
+- **Keep the Home guard.** The stock launcher is disabled only after the new launcher is installed and
+  confirmed as Home (`dumpsys activity activities | grep mFocusedApp`). On Google TV, check
+  `dumpsys wifi | grep -o 'cname=[^ ]*'` before disabling setupwraith: if it owns the saved Wi-Fi
+  network, disabling it takes the TV off Wi-Fi and ADB. `tools/disable.sh` and
+  `launcher/build-and-install.sh` already enforce this. Use `FORCE_HOME=1` or `FORCE_SETUPWRAITH=1` only in
+  the situation the script's own message describes, and only with the person's agreement.
+  - On a CVTE board (any `com.cvte.*` package), leave its stock launcher (`com.cvte.tv.launcher.*`) enabled
+    unless the `examples/` folder for that exact board disables it. Make the new launcher Home with
+    `cmd package set-home-activity`, reboot once, and confirm Home and ADB come back before anything else.
+    Don't enable a remote-key helper in the same pass: a JVC set hung on its boot animation with ADB gone
+    after both were done before one reboot (#741).
+- **Ask before anything the family uses.** Streaming apps, the voice assistant, Chromecast, Miracast and
+  the firmware updater go into one checklist question; disable only what the person does not tick.
+- **Disable in small batches** and screenshot between them (`tools/tv.py --screenshot shots/01.png`).
+  Live TV, HDMI and some streaming apps give empty screenshots; that is the TV, not damage.
+- **An injected key is not proof** for a remote button that goes through an accessibility helper: ask the
+  person to press the real button. `am force-stop com.gathin.tvhome` switches those helpers off.
+- **Close ADB afterwards.** USB debugging and Network/ADB debugging off, authorisations revoked, reboot,
+  then `tools/adb-closed.py <tv ip>` must report the port closed. Port 5555 is plaintext.
+- **Stop and say so** when the TV refuses: `pm disable-user` refused for every package, a sideload that
+  fails verification, or an SDK below the launcher's `minSdk` 26. Do not retry in a loop, and do not lower
+  `minSdk` or hand over an APK built elsewhere.
 
-# tests (CI runs exactly this)
-python3 -m unittest discover -s tests -v
+The person's backups (`backup/`), screenshots (`shots/`), notes (`work/`) and the ADB key
+(`tools/adbkey/`) are listed in `.gitignore` and must never be committed. If the person wants to
+share their TV's list afterwards, follow [`docs/workflows/tv-list.md`](docs/workflows/tv-list.md).
 
-# talk to the TV (TV_HOST required)
-TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py --probe
-TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py 'pm list packages'
-```
+## Repo map
 
-Launcher (JDK 17, Android SDK platform 34 / build-tools 34.0.0):
+| Path | What it is |
+|---|---|
+| `PROMPT.md` | The prompt people paste into their agent. Brand-neutral; safety rules live here. |
+| `README.md` | Front page, with the TV table and the Tools table. `README.zh-CN.md` and `README.vi.md` are translations. |
+| `CONTRIBUTING.md` | The contributor guide for people. "Where does my idea go?" is the routing table. |
+| `SECURITY.md` | Private vulnerability reporting. |
+| `SHOWCASE.md` | Projects built on this repo that live in their own repositories. |
+| `CODE_OF_CONDUCT.md` | Includes the rule against publishing device identifiers, Wi-Fi names and IPs. |
+| `examples/` | One folder per tested TV model: `debloat.txt`, sometimes a `README.md` and a `config.json`. Indexed in `examples/README.md`. |
+| `docs/` | `docs/TROUBLESHOOTING.md`, the module-card contract (`docs/modules.md`), `docs/devices/` for models with notes but no tested list, and the [workflows](#workflows). |
+| `launcher/` | The reference launcher, package `com.gathin.tvhome`: plain Java, AndroidX RecyclerView and DynamicAnimation, `minSdk` 26, no `INTERNET` permission. |
+| `themes/` | One folder per theme: `config.json`, a required `screenshot.jpg`, optional wallpapers. Keys are documented in `themes/README.md`. |
+| `addons/` | Optional module-card apps, each its own Gradle project, never built into the launcher. |
+| `tools/` | The ADB client (`tv.py`) and the scripts, listed in the README's Tools table. Shell scripts have PowerShell twins. Each script's usage is in its first lines, and the larger ones have a guide beside them (`tools/*.md`): read it before running the script. |
+| `tests/` | Python `unittest` suite: list format, README tables, press counts, themes, add-ons, the Home guard and the tools against fake TVs. |
+| `.github/workflows/` | `ci.yml` (tests, launcher build, APK size gate), `addons.yml`, `maintainer-bot.yml`. |
+| `.github/maintainer/MAINTAINER.md` | The review policy the maintainer and the PR bot apply. |
+| `.github/pull_request_template.md` | The PR checklist. Fill it in. |
 
-```bash
-cd launcher && ./gradlew testReleaseUnitTest assembleRelease
+## Where a change goes
 
-# install + set Home; start it before disabling the stock launcher
-TV_HOST=192.168.1.40 INPUT_KEY_SERVICE=1 launcher/build-and-install.sh
-```
+The core stays small on purpose. Pick the smallest home that fits (CONTRIBUTING, "Where does my idea go?"):
 
-Device operations:
+| The change | Where it goes |
+|---|---|
+| A TV list, a fix, a translation, docs, a tool fix | A pull request here |
+| A small launcher switch that is off by default | A pull request here: see [`docs/workflows/launcher-switch.md`](docs/workflows/launcher-switch.md) |
+| A new look: colours, wallpaper, dock, columns, that existing config keys can carry | `themes/<name>/` |
+| A widget or tile that can be its own small app | `addons/<name>/`, as a module card that never touches `launcher/` |
+| A whole new launcher, a heavy restyle, a port to another platform, a lower `minSdk`, new permissions or network access, Fire TV Home takeover, a changed default for every TV | Your own repository, plus one row in `SHOWCASE.md` |
+| Safety rules in `PROMPT.md`, the Home-safety logic in the scripts, protected packages, CI and workflows, the APK size gate | Open an issue for the maintainer; do not change it in a PR |
 
-```bash
-TV_HOST=192.168.1.40 tools/disable.sh examples/<model>/debloat.txt
-TV_HOST=192.168.1.40 tools/restore.sh examples/<model>/debloat.txt
-TV_HOST=192.168.1.40 tools/theme.sh themes/aurora      # --reset to remove
-TV_HOST=192.168.1.40 tools/push_wallpapers.sh          # family_photo/ by default, --clean to replace
-TV_HOST=192.168.1.40 tools/set_dock_hide.sh 60         # --get, 0 disables
-TV_HOST=192.168.1.40 backup/restore_backup.sh          # this TV back to stock
-```
+Every PR is reviewed by the maintainer and by a bot that apply `.github/maintainer/MAINTAINER.md`: read its
+verdicts before a non-trivial PR. Changes to the Home or launch path (Home key, boot, return to Home, the
+install scripts) are usually held for a run on a real TV.
 
-Screenshot loop used for verification:
+## Workflows
 
-```bash
-TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
-  'input keyevent KEYCODE_DPAD_DOWN; screencap -p /sdcard/s.png'
-TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py --pull /sdcard/s.png s.png
-```
+Step-by-step methods in `docs/workflows/`. Read the one that fits before you start; each opens with when to
+use it and ends with the check to run.
 
-## Hard constraints
+- [`tv-list.md`](docs/workflows/tv-list.md): add a tested TV's debloat list with its README rows, or update one.
+- [`launcher-switch.md`](docs/workflows/launcher-switch.md): add an off-by-default launcher switch, within the size gate.
+- [`translation.md`](docs/workflows/translation.md): add a launcher language, or fill strings missing from one.
+- [`theme.md`](docs/workflows/theme.md): add a theme from existing keys, with its screenshot from a real TV.
+- [`addon.md`](docs/workflows/addon.md): add a module-card app that never touches `launcher/`.
+- [`showcase.md`](docs/workflows/showcase.md): list a project that lives in its own repository.
+- [`press.md`](docs/workflows/press.md): add an article and update the four press counts.
+- [`docs-notes.md`](docs/workflows/docs-notes.md): add a troubleshooting entry or a `PROMPT.md` fix, keeping pinned facts.
+- [`perf-ab.md`](docs/workflows/perf-ab.md): an optional check of a launcher change for performance regressions with
+  `tools/bench.py`, and measure an improvement or a failed check with traces, a report and flame charts.
 
-**Launcher**
+## Before opening a PR
 
-- Plain Java only. No Kotlin, no Compose. Dependencies stay at AndroidX RecyclerView + DynamicAnimation
-  (JUnit is test-only). No new dependency without an issue first.
-- Targets 1 GB-RAM TVs: no blur/video backgrounds, no polling, no background services, no wake locks.
-  Decode bitmaps as `RGB_565`, downsample, recycle, do I/O and EXIF off the main thread, and stop all
-  timers/threads in `onPause()`. Keep the process well under ~40 MB RSS.
-- `config.xml` holds every per-TV value and a safe default. `Config.java` merges the optional
-  `config.json` overlay; malformed/missing/unknown keys must fail silently. Document new keys in
-  `themes/README.md`.
-- D-pad navigation must stay deterministic from every edge. Verify on the real TV, not only an emulator.
-- Release APK must stay small; CI fails above **400 KB**.
+| Check | Command or rule |
+|---|---|
+| Tests, as CI runs them | `python3 -m unittest discover -s tests -v` after `python3 -m venv tools/venv` and `tools/venv/bin/pip install -r tools/requirements.txt`. On `main`, CI sets `CLEANYOURTV_STRICT=1`, which also checks the README's TV-model count. |
+| Launcher, if you touched `launcher/` | JDK 17, Android SDK platform 34, build-tools 34.0.0. In `launcher/`: `./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease`. Lint must stay at zero errors. |
+| APK size gate | `launcher/app/build/outputs/apk/release/app-release.apk` must be under 491,520 B (480 KB). Linux: `stat -c %s`, macOS: `stat -f %z`. |
+| README rows | A new list has its row in `README.md` and `examples/README.md`; a theme in `themes/README.md`; an add-on in `addons/README.md`. |
+| One topic per PR | A TV list never rides inside a launcher feature PR. A device's list plus small fixes for that same device can be one PR. |
+| Tested on | Say which TV, Android version and firmware you tested on, in the PR template's "Tested on" line. |
+| Real TV | Launcher changes are verified on a real TV, not only the emulator: `tools/tv.py --screenshot shots/after.png DPAD_DOWN`. D-pad from every edge (Up, Down, Left, Right). A button handled by an accessibility helper needs a press on the real remote, and a force-stop of the launcher switches the helpers off (`docs/TROUBLESHOOTING.md`). |
+| Screenshots | Every visual change has a screenshot from the TV in the PR description. |
+| Performance | A performance claim shows `tools/bench.py` before and after, plus trace numbers. For any other launcher change the regression check in [`docs/workflows/perf-ab.md`](docs/workflows/perf-ab.md) is optional but welcome. |
+| Stray files | No files that nothing links to: screenshots belong in the PR description, not the tree. |
 
-**Debloat / device work**
+## Hard rules
 
-- **Never uninstall** system packages. Only `pm disable-user --user 0`, and only after checking what a
-  package actually does (`dumpsys package`).
-- Back up first, and keep `tools/restore.sh` able to undo everything.
-- Never disable load-bearing pieces: TV/tuner app, input services, remote/Bluetooth pairing, keyboard,
-  Play Store/Services. Ask before touching streaming apps, voice assistant, Chromecast, updates.
-- Run one `pm` command per shell call (or use `tv.py --batch`); chained `pm` commands may stop early.
-- The stock launcher is disabled **after** the replacement is installed, started and verified.
+Never do these in a PR:
 
-## Environment on this Mac
+- **No prebuilt APKs or binaries** in the repo, not even as CI artifacts. People build from source.
+- **No uninstalling.** No `pm uninstall` in a list or a script. `pm hide` or `pm block` only with the matching
+  undo written in the list header.
+- **No network in the launcher:** no `INTERNET` permission, no network features, no analytics or telemetry, no
+  background services or polling, no blur or video. It targets TVs with 1 GB of RAM.
+- **No new launcher dependencies** without discussing them in an issue first.
+- **No changes to the safety rules** in `PROMPT.md`, the Home guard and other safety checks in
+  `tools/disable.sh`, `tools/check.py` and `launcher/build-and-install.sh`, or the list of packages the TV
+  needs, without the maintainer.
+- **No changing a default for every TV.** New behaviour is off until a theme or `config.xml` turns it on.
+- **Firmware updaters are better left enabled** (commented out in the list); a list that disables one says
+  why in its header.
+- **No Private DNS or AdGuard setup, and no install or restore scripts, inside a list folder.** The README
+  already has the optional DNS extra; a note that Private DNS works on that TV is fine.
+- **No secrets or identifiers** in commits, lists or screenshots: no IP addresses, Wi-Fi names, account emails,
+  serial numbers, Android IDs, MAC addresses or ADB keys. Use `<tv ip>` or `192.168.1.50` in docs.
+- **Don't edit `.github/workflows/`** or the APK size gate in a normal PR. A PR whose main content is a new CI
+  workflow that builds or publishes releases is closed.
+- **No root, no getting around app-store protection, no private builds** others cannot reproduce from this repo.
+- **No extras added to the PROMPT flow** beyond debloating and the launcher.
+- **Don't relax `minSdk`** (26) or the launcher's permissions; those are forks for `SHOWCASE.md`.
+- **Blur or crop** Wi-Fi names, people's names and cities (the top bar, a theme's `greeting_name`) before a
+  screenshot goes anywhere public. No TV Settings screenshots that show accounts, emails or device names.
+  From `tools/tv.py --probe`, `getprop` and backups, quote only the model, Android version and firmware build.
+- **Security problems are reported privately**, as [SECURITY.md](SECURITY.md) describes, never in a public issue.
 
-- JDK 17: `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` (not the system Java).
-- Android SDK: `/opt/homebrew/share/android-commandlinetools` (already in `launcher/local.properties`).
-- `tools/venv` uses Python 3.14 and now has `Pillow` installed. Pillow is needed by
-  `push_wallpapers.sh` and `tests/test_wallpapers.py` but is not listed in `tools/requirements.txt`,
-  so a fresh venv will need it added.
-- `backup/`, `family_photo/`, screenshots, `tools/venv/`, `tools/adbkey/` and builds are gitignored or
-  untracked. Do not commit device dumps, serials or family photos.
-- macOS may block the stock `adb` binary on the local network; `tools/tv.py` avoids it on purpose.
+## Commit and PR style
 
-## Docs worth opening
+- Titles are `area: what changed`, in plain words, with the issue in parentheses when there is one:
+  `examples: add Epson LS800 laser projector (Askey HA90, Amlogic), Android TV 14`,
+  `docs: an HDMI row opens any app that claims the channel MIME type (#805)`,
+  `Launcher: show_inputs_pill, to hide the Inputs pill`. The area is the folder or file the change is in:
+  `examples`, `Launcher`, `docs`, `tools`, `tests`, `themes`, `addons`, `SHOWCASE`, `README`, `Press`.
+- The body is one or two sentences on what changed and the TV it was tried on, then the template's checklist.
+  `Fixes #N` or `Closes #N` when it resolves an issue.
+- One topic per PR. Small is fine. Be kind in reviews.
+- Contributions are released under the repo's MIT licence.
 
-- `CONTRIBUTING.md` — accepted changes and PR expectations.
-- `README.md` — user-facing setup, supported TVs, manual commands.
-- `README_DEVICE.md` — this Sony TV's setup, restore, audio sync, wallpapers, feature cookbook.
-- `themes/README.md` — every runtime config key.
-- `docs/TROUBLESHOOTING.md` — ADB/Home/screenshot failure modes already solved.
-- `PROMPT.md` — the brand-neutral workflow the project ships.
+## Where to ask
+
+Questions go to [GitHub Discussions](https://github.com/Gathin23/cleanyourtv/discussions); bugs, TV lists and
+ideas that need a launcher change or a new dependency go to an issue first, with the templates in
+`.github/ISSUE_TEMPLATE/`.
+
+## Personal fork: Sony KD-49X8000D
+
+This checkout is also [ehsan-fj/cleanyourtv](https://github.com/ehsan-fj/cleanyourtv), a personal fork
+that tracks upstream ([Gathin23/cleanyourtv](https://github.com/Gathin23/cleanyourtv)) on `merge/upstream-*` branches. **Device work is
+uncommitted on purpose**: do not commit, stash or push unless the user asks, and never revert their
+working tree.
+
+The TV is a **Sony KD-49X8000D** (`BRAVIA 4K GB`, Android TV 9 / API 28), IP `192.168.1.40`; its guide
+is `README_DEVICE.md`. If `TV_HOST` is unset or the TV is off, ask for the IP rather than guessing.
+
+Fork-only features on top of upstream: Bravia Sync / sound-bar switching (`AudioSystemEnforcer`,
+`AudioSyncReceiver`, `BluetoothAudioControl`); the local photo engine (`WallpaperShuffleManager`,
+with EXIF captions and the `dock_hide_seconds` dock fade); the weather pill (`WeatherManager`) and the
+larger header type. The photo engine draws the background; upstream's wallpaper-rotation path and its
+Launcher-settings picker were dropped in the 2.7 merge, so `themes/README.md` is the reference for the
+keys the launcher still reads.
