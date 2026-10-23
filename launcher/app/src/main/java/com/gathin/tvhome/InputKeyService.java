@@ -39,12 +39,15 @@ public class InputKeyService extends AccessibilityService {
 
     private int[] inputKeycodes = new int[0];
     private Map<Integer, String> appKeys = Collections.emptyMap();
+    private boolean bluetoothAudioAcquired;
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         registerReceiver(mScreenReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
         AudioSystemEnforcer.ensureAudioSystem(this, 3500L);
+        BluetoothAudioControl.acquire(this);
+        bluetoothAudioAcquired = true;
         // From config.xml or a theme's config.json; theme.sh rebinds this service after a push.
         Config config = Config.load(this);
         inputKeycodes = config.inputKeycodes;
@@ -57,6 +60,10 @@ public class InputKeyService extends AccessibilityService {
         try {
             unregisterReceiver(mScreenReceiver);
         } catch (Exception ignored) {
+        }
+        if (bluetoothAudioAcquired) {
+            BluetoothAudioControl.release();
+            bluetoothAudioAcquired = false;
         }
     }
 

@@ -74,18 +74,25 @@ Your Sony TV previously defaulted to TV speakers when powering on because the LG
 
 The launcher now automates this:
 - **How it works:** Communicates directly with Sony's internal `com.sony.dtv.braviasyncservice.BraviaSyncService` via IPC (`MSG_CHANGE_PEER_AUDIO_MODE`), sending mode `1` (Audio System) after a 3.5s and 7s delay once the sound bar is fully awake.
+- **Bluetooth-aware:** If A2DP headphones are connected, the launcher sends mode `0` (**TV speakers**) instead, so the sound bar stays silent while the headphones play. When the headphones disconnect, it restores the audio system. See [section 13](#13-bluetooth-headphones-re-pairing--reconnecting).
 - **Triggers:**
   1. **Standby Wake:** Listens to `ACTION_SCREEN_ON` via `InputKeyService` (runs across all apps).
   2. **Cold Boot:** Listens to `BOOT_COMPLETED` via `AudioSyncReceiver`.
   3. **Launcher Resume:** Fired in `MainActivity.onResume()` whenever you return home.
+  4. **Headphones:** `BluetoothAudioControl` switches the route on A2DP connect/disconnect.
 - **Manual Trigger over ADB (for testing):**
   ```bash
-  # Connect to LG Sound Bar:
-  TV_HOST=192.168.1.40 tools/venv/bin/python tools/tv.py 'am broadcast -n com.gathin.tvhome/.AudioSyncReceiver -a com.gathin.tvhome.ACTION_SYNC_AUDIO --ei mode 1'
+  # Connect to LG Sound Bar (do not use while Bluetooth headphones are connected):
+  TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py 'am broadcast -n com.gathin.tvhome/.AudioSyncReceiver -a com.gathin.tvhome.ACTION_SYNC_AUDIO --ei mode 1'
 
   # Switch to TV Speakers:
-  TV_HOST=192.168.1.40 tools/venv/bin/python tools/tv.py 'am broadcast -n com.gathin.tvhome/.AudioSyncReceiver -a com.gathin.tvhome.ACTION_SYNC_AUDIO --ei mode 0'
+  TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py 'am broadcast -n com.gathin.tvhome/.AudioSyncReceiver -a com.gathin.tvhome.ACTION_SYNC_AUDIO --ei mode 0'
   ```
+
+> [!NOTE]
+> The manual broadcasts are explicit test triggers and bypass the A2DP guard. With
+> headphones connected, use mode `0`; mode `1` forces the sound bar and may play
+> audio in both places.
 
 ---
 
@@ -244,8 +251,9 @@ For future pair-programming or agent-driven sessions, follow these architecture 
 | [`WeatherManager.java`](launcher/app/src/main/java/com/gathin/tvhome/WeatherManager.java) | Ultra-low-power weather pill. Queries `wttr.in`, caches responses in `SharedPreferences` for 45 minutes, handles manual click refreshes, and runs zero background processes. |
 | [`DockDecoration.java`](launcher/app/src/main/java/com/gathin/tvhome/DockDecoration.java) | Custom `RecyclerView.ItemDecoration` rendering the translucent frosted glass dock band behind pinned apps. |
 | [`AppAdapter.java`](launcher/app/src/main/java/com/gathin/tvhome/AppAdapter.java) | TV Leanback banner loader, focus scale animations, dynamic app launch intent construction. |
-| [`AudioSystemEnforcer.java`](launcher/app/src/main/java/com/gathin/tvhome/AudioSystemEnforcer.java) | Connects to Sony's `BraviaSyncService` via IPC (`MSG_CHANGE_PEER_AUDIO_MODE`) to switch audio output to the external sound bar (mode 1) with 3.5s/7s waking delays. |
+| [`AudioSystemEnforcer.java`](launcher/app/src/main/java/com/gathin/tvhome/AudioSystemEnforcer.java) | Connects to Sony's `BraviaSyncService` via IPC (`MSG_CHANGE_PEER_AUDIO_MODE`) to switch audio output to the external sound bar (mode 1) with 3.5s/7s waking delays. When A2DP headphones are connected it keeps mode 0 (TV speakers) so the sound bar stays quiet. |
 | [`AudioSyncReceiver.java`](launcher/app/src/main/java/com/gathin/tvhome/AudioSyncReceiver.java) | Broadcast receiver for boot and explicit audio sync intent triggers. |
+| [`BluetoothAudioControl.java`](launcher/app/src/main/java/com/gathin/tvhome/BluetoothAudioControl.java) | Reference-counted Bluetooth helper. Reconnects A2DP when bonded headphones power on and swaps Bravia Sync between TV speakers and the audio system as they connect/disconnect. |
 | [`InputKeyService.java`](launcher/app/src/main/java/com/gathin/tvhome/InputKeyService.java) | Accessibility service that monitors remote hotkeys and screen wake events across third-party apps. |
 
 ### The 4 Golden Rules for the Sony Bravia (MT5891 / Low RAM)
@@ -307,3 +315,108 @@ All screenshots taken directly from your Sony TV during installation, audio test
 - `screen_translucent_dock.png` — Translucent glass dock band with lowered position, letting photos show through.
 - `screen_nav_right.png` — D-pad navigation across the translucent dock.
 - `current_screen.png` — Live production screenshot showing Wellington weather pill (`☀️ 15°C`), enlarged living-room typography, and 15-second family photo shuffle.
+
+---
+
+## 13. Bluetooth Headphones (Re-pairing & Reconnecting)
+
+The TV uses **Plantronics BackBeat Pro 2** (`PLT BB PRO 2`), MAC address
+`E4:22:A5:BD:0C:91`.
+
+Sony's built-in **Settings → Remotes & Accessories → Add accessory** screen on this
+firmware never leaves “Searching for accessories…” and does not list classic
+Bluetooth headphones. The headphones were paired with the small **BT Pair** helper
+(`com.gless.btpair`), which is already installed on the TV. Keep that helper
+installed: it is only needed for pairing/re-pairing, not for daily reconnects.
+
+> [!IMPORTANT]
+> Do **not** clear Bluetooth data or “Forget all devices” on the TV. That also
+> unpairs the Bluetooth remote control.
+
+### Normal reconnect (automatic)
+
+The launcher handles this automatically:
+
+- `BluetoothAudioControl` listens for the headphones' Bluetooth ACL connection and
+  starts A2DP when they power on.
+- The TV's A2DP priority for the headphones is set to `1000` (auto-connect), so
+  they also reconnect after a TV reboot or when Bluetooth is turned back on.
+- While the headphones are connected, Bravia Sync is kept on **TV speakers**, so the
+  LG sound bar stays silent. When the headphones disconnect, the audio system is
+  restored automatically.
+
+### If they do not reconnect when powered on
+
+1. **Check the phone.** The BackBeat Pro 2 supports multipoint. If it is still
+   connected to a phone or tablet, the TV cannot take it. Turn Bluetooth off on the
+   phone, or disconnect the headphones from the phone first.
+2. **Reconnect manually with BT Pair.** Open **BT Pair** on the TV and select
+   `PLT BB PRO 2`, or run:
+
+   ```bash
+   TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+     'am start -n com.gless.btpair/.MainActivity --es pair_mac E4:22:A5:BD:0C:91'
+   ```
+
+   Wait a few seconds. The app scans, finds the already-bonded headphones and calls
+   A2DP connect.
+
+### Pairing again from scratch
+
+Use this only if the headphones were unpaired (for example, after “Forget all
+devices” or a TV factory reset).
+
+1. Put the headphones in pairing mode (hold the power button until the LED
+   flashes).
+2. Start BT Pair with the headphone MAC:
+
+   ```bash
+   TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+     'am start -n com.gless.btpair/.MainActivity --es pair_mac E4:22:A5:BD:0C:91'
+   ```
+
+3. After roughly 10–15 seconds, the Sony **Bluetooth pairing request** dialog
+   appears. Select **Pair** with the remote. If you are automating it over ADB, the
+   button is around screen coordinate `1244 540`. If the dialog disappears before you
+   select **Pair**, run the command again; it only stays up for about 20 seconds.
+4. Re-pairing resets the A2DP priority. Set it back to auto-connect:
+
+   ```bash
+   TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+     'settings put global bluetooth_a2dp_sink_priority_E4:22:A5:BD:0C:91 1000'
+   ```
+
+5. Press **Home** and test. If the sound bar is still audible, force TV speakers:
+
+   ```bash
+   TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+     'am broadcast -n com.gathin.tvhome/.AudioSyncReceiver -a com.gathin.tvhome.ACTION_SYNC_AUDIO --ei mode 0'
+   ```
+
+### Check the connection
+
+```bash
+# A2DP state and active device
+TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+  'dumpsys bluetooth_manager | grep -A4 "Profile: A2dpService"'
+
+# Active Android audio route
+TV_HOST=192.168.1.40 tools/venv/bin/python -I tools/tv.py \
+  'dumpsys audio | grep -E "mBluetoothName|Devices:" | tail -6'
+```
+
+A healthy connection shows:
+
+- `mActiveDevice: E4:22:A5:BD:0C:91`
+- `StateMachine: name=A2dpStateMachine state=Connected`
+- `mBluetoothName=PLT BB PRO 2`
+
+The Bravia Sync log should show `Speaker setting change to -> tv_speakers` while the
+headphones are connected, and `-> audio_system` after they disconnect.
+
+### If audio comes out of both headphones and the sound bar
+
+The launcher should prevent this. If it happens, force TV speakers with the mode `0`
+broadcast above and check that the headphones show as the active A2DP device. If the
+sound bar is still audible, change the TV's **Speakers** setting to **TV speakers**
+in the TV settings.

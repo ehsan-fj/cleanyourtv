@@ -19,6 +19,11 @@
     <!-- Audio sync on cold boot and wallpapers from external storage. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- Bluetooth headphones (BluetoothAudioControl): keep the Bravia Sync sound bar quiet while
+         A2DP is connected, and reconnect A2DP when the headphones power on. Granted at install;
+         the auto-reconnect is skipped on Android 12+, where these permissions are no longer valid. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
 
     <!-- Android 11+ package visibility: lets the launcher list the TV apps it shows as tiles, and the
          apps that declare a module card (docs/specs/card.md). -->

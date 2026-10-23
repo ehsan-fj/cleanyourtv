@@ -196,6 +196,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean wakeKeyConsumed = false;
     private TextView photoCaption;
     private WeatherManager weatherManager;
+    private boolean bluetoothAudioAcquired;
     private final Runnable hideDockRunnable = new Runnable() {
         @Override
         public void run() {
@@ -602,6 +603,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         TextView btnWeather = findViewById(R.id.btnWeather);
         weatherManager = new WeatherManager(this, btnWeather, cfg.showWeather, cfg.weatherCity);
+        BluetoothAudioControl.acquire(this);
+        bluetoothAudioAcquired = true;
 
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
@@ -888,6 +891,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (weatherManager != null) {
             weatherManager.onDestroy();
+        }
+        if (bluetoothAudioAcquired) {
+            BluetoothAudioControl.release();
+            bluetoothAudioAcquired = false;
         }
         try {
             unregisterReceiver(screenReceiver);
